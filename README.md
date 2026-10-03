@@ -27,6 +27,7 @@ Run tests with `uv run --frozen pytest -q`. Stop the app with `docker compose do
 The app uses the OpenTelemetry SDK. In Docker Compose it sends all signals over OTLP to an OpenTelemetry Collector, which forwards metrics to Prometheus, logs to Loki, and traces to Tempo. Grafana reads all three.
 
 - **Grafana**: <http://127.0.0.1:3000>. It opens the **Order Tracker – Requests and Errors** dashboard, which shows request counts, 4xx/5xx errors, error rate by route, warning and error logs, and failed traces. You can view without logging in. Sign in as `admin` / `admin` to edit. Log lines link to their trace, and traces link to their logs.
+- **Alert**: **Order Tracker 5xx responses** (Alerting → Alert rules, folder *Order Tracker*) fires per endpoint (method and route) when it returned any 5xx in the last 5 minutes, and resolves after 5 minutes without one. Its annotations include the endpoint, the time window, and a link to the dashboard. Having no traffic, or no 5xx, counts as Normal. The rule is in [observability/grafana/provisioning/alerting/](observability/grafana/provisioning/alerting/). Grafana reads it at startup, so run `docker compose restart grafana` after you edit it.
 - **Prometheus**: <http://127.0.0.1:9090>. Metrics are named `http_server_requests_total` and `http_server_request_duration_seconds`, with `job="order-tracker"`.
 - Collector, Loki, and Tempo are only reachable inside the Compose network. Their configs are in [observability/](observability/).
 

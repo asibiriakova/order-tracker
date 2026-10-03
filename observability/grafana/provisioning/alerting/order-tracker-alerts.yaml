@@ -1,0 +1,71 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: order-tracker
+    folder: Order Tracker
+    interval: 1m
+    rules:
+      - uid: order-tracker-5xx
+        title: Order Tracker 5xx responses
+        condition: C
+        data:
+          # 5xx responses per endpoint over the last 5 minutes.
+          #
+          # The counters are cumulative and a 5xx series only appears with its first error, so its
+          # first sample is already 1 and increase() reads it as 0. The `unless ... offset 5m` branch
+          # counts such new series by their raw value. A process restart also starts new series,
+          # because the instance label is the per-process service.instance.id.
+          #
+          # The last branch reports 0 for every endpoint that served traffic without a 5xx, so
+          # quiet periods are evaluated as Normal instead of having no data.
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              range: false
+              expr: |-
+                sum by (http_request_method, http_route) (
+                    (
+                      http_server_requests_total{job="order-tracker", http_response_status_code=~"5.."}
+                      unless
+                      http_server_requests_total{job="order-tracker", http_response_status_code=~"5.."} offset 5m
+                    ) * 1
+                  or
+                    increase(http_server_requests_total{job="order-tracker", http_response_status_code=~"5.."}[5m])
+                )
+                or
+                0 * sum by (http_request_method, http_route) (increase(http_server_requests_total{job="order-tracker"}[5m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        # No traffic at all means no series. That is not an error condition, so stay Normal.
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          service: order-tracker
+          severity: critical
+        annotations:
+          summary: '{{ $labels.http_request_method }} {{ $labels.http_route }} returned 5xx responses'
+          description: >-
+            {{ $labels.http_request_method }} {{ $labels.http_route }} returned
+            {{ humanize $values.A.Value }} 5xx responses in the last 5 minutes.
+          endpoint: '{{ $labels.http_request_method }} {{ $labels.http_route }}'
+          time_window: 5m
+          dashboard_url: '{{ externalURL }}d/order-tracker-requests?orgId=1&from=now-1h&to=now&viewPanel=7'
+          # Links the rule to the "Error rate (5xx) by route" panel: Grafana shows the alert there
+          # and adds DashboardURL/PanelURL to notifications.
+          __dashboardUid__: order-tracker-requests
+          __panelId__: "7"
