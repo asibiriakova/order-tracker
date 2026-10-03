@@ -1,7 +1,11 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+
+from app import main  # noqa: E402
 
 
 @pytest.fixture

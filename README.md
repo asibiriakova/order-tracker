@@ -22,6 +22,16 @@ ORDER_TRACKER_PORT=18080 docker compose up --build -d --wait
 
 Run tests with `uv run --frozen pytest -q`. Stop the app with `docker compose down`. Add `-v` only if you also want to delete the order data.
 
+## Telemetry
+
+The app uses the OpenTelemetry SDK and prints all signals as JSON to stdout. View them with `docker compose logs -f app`.
+
+- **Metrics** (exported every 10 s, configurable with `OTEL_METRIC_EXPORT_INTERVAL` in ms): `http.server.requests` (counter) and `http.server.request.duration` (histogram, seconds). Both are labelled with `http.request.method`, `http.route` (the route template, such as `/api/orders/{order_id}`), and `http.response.status_code`.
+- **Traces**: an `order.lookup` span for every order lookup, with `order.id`, `order.found`, `order.priority`, and `order.status`. Unexpected errors set the span status to `ERROR` and record the exception.
+- **Logs**: `Order looked up` (INFO), `Order not found` (WARN), and `Order lookup failed` (ERROR, with the exception). Each log carries the trace and span IDs of its lookup.
+
+Set `OTEL_SDK_DISABLED=true` to turn telemetry off. The tests set this.
+
 ## API
 
 | Method | Path | Purpose |

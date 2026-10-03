@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app.telemetry import logger, record_request, setup_telemetry, tracer
+
 
 DB_PATH = Path(os.getenv("ORDER_DB_PATH", "data/orders.db"))
 STATUSES = {"received", "preparing", "shipped", "delivered"}
@@ -76,7 +78,9 @@ async def lifespan(_app: FastAPI):
     yield
 
 
+setup_telemetry()
 app = FastAPI(title="Order Tracker", lifespan=lifespan)
+app.middleware("http")(record_request)
 
 
 @app.get("/")
@@ -100,11 +104,26 @@ def list_orders():
 
 @app.get("/api/orders/{order_id}")
 def get_order(order_id: str):
-    with connect() as db:
-        row = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    with tracer.start_as_current_span("order.lookup") as span:
+        span.set_attribute("order.id", order_id)
+        with connect() as db:
+            row = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+        span.set_attribute("order.found", row is not None)
+        if row is None:
+            logger.warning("Order not found", extra={"order.id": order_id})
+        else:
+            span.set_attribute("order.priority", row["priority"])
+            span.set_attribute("order.status", row["status"])
+            try:
+                order = order_detail(row)
+            except Exception:
+                logger.exception("Order lookup failed", extra={"order.id": order_id})
+                raise
+            logger.info("Order looked up", extra={"order.id": order_id, "order.status": order["status"]})
+    # Raised outside the span: a missing order is a client outcome, not a span error.
     if row is None:
         raise HTTPException(404, "Order not found")
-    return order_detail(row)
+    return order
 
 
 @app.post("/api/orders", status_code=201)
