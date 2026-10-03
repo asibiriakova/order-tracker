@@ -1,0 +1,24 @@
+apiVersion: 1
+
+# Sends every alert to the incident responder (incident-response/), which runs on the host
+# next to the repository so it can start the coding assistant there.
+contactPoints:
+  - orgId: 1
+    name: incident-response
+    receivers:
+      - uid: incident-response-webhook
+        type: webhook
+        settings:
+          url: http://host.docker.internal:8001/alerts
+          httpMethod: POST
+        # The responder ignores resolved notifications, but logs them for the record.
+        disableResolveMessage: false
+
+# Replaces the default policy tree, so all alerts in this org go to the responder.
+policies:
+  - orgId: 1
+    receiver: incident-response
+    group_by: [grafana_folder, alertname]
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 4h

@@ -78,6 +78,9 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       # Used for links in alerts, so they point at the published port.
       GF_SERVER_ROOT_URL: http://127.0.0.1:${GRAFANA_PORT:-3000}
+    extra_hosts:
+      # Alert notifications go to the incident responder on the host (Docker Desktop has this built in).
+      - host.docker.internal:host-gateway
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
