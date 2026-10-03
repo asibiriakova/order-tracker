@@ -1,0 +1,17 @@
+# Metrics arrive from the Collector over OTLP, so there is nothing to scrape except Prometheus itself.
+global:
+  scrape_interval: 15s
+
+otlp:
+  # Keep service.name as job (the default) and also expose it as a regular label.
+  promote_resource_attributes: [service.name]
+
+storage:
+  tsdb:
+    # OTLP pushes can arrive slightly out of order.
+    out_of_order_time_window: 30m
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

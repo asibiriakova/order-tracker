@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: order-tracker
+    folder: Order Tracker
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

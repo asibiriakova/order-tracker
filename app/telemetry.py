@@ -5,6 +5,9 @@ import time
 
 from opentelemetry import metrics, trace
 from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, ConsoleLogExporter
 from opentelemetry.sdk.metrics import MeterProvider
@@ -35,25 +38,36 @@ request_duration = meter.create_histogram(
 
 
 def setup_telemetry():
-    """Install SDK providers that print traces, metrics, and logs to stdout."""
+    """Install SDK providers for traces, metrics, and logs.
+
+    Signals go over OTLP/HTTP when OTEL_EXPORTER_OTLP_ENDPOINT is set (the exporters read
+    it themselves), and are printed to stdout otherwise.
+    """
     if os.getenv("OTEL_SDK_DISABLED", "").lower() == "true":
         return
     if isinstance(trace.get_tracer_provider(), TracerProvider):
         return
     resource = Resource.create({"service.name": SERVICE_NAME})
+    if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        span_exporter, metric_exporter, log_exporter = (
+            OTLPSpanExporter(), OTLPMetricExporter(), OTLPLogExporter()
+        )
+    else:
+        span_exporter, metric_exporter, log_exporter = (
+            ConsoleSpanExporter(out=sys.stdout),
+            ConsoleMetricExporter(out=sys.stdout),
+            ConsoleLogExporter(out=sys.stdout),
+        )
 
     tracer_provider = TracerProvider(resource=resource)
-    tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter(out=sys.stdout)))
+    tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
     trace.set_tracer_provider(tracer_provider)
 
-    reader = PeriodicExportingMetricReader(
-        ConsoleMetricExporter(out=sys.stdout),
-        export_interval_millis=METRIC_EXPORT_INTERVAL_MS,
-    )
+    reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=METRIC_EXPORT_INTERVAL_MS)
     metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
 
     logger_provider = LoggerProvider(resource=resource)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(ConsoleLogExporter(out=sys.stdout)))
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
     set_logger_provider(logger_provider)
     logger.addHandler(LoggingHandler(logger_provider=logger_provider))
     logger.setLevel(logging.INFO)

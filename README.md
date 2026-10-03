@@ -24,7 +24,15 @@ Run tests with `uv run --frozen pytest -q`. Stop the app with `docker compose do
 
 ## Telemetry
 
-The app uses the OpenTelemetry SDK and prints all signals as JSON to stdout. View them with `docker compose logs -f app`.
+The app uses the OpenTelemetry SDK. In Docker Compose it sends all signals over OTLP to an OpenTelemetry Collector, which forwards metrics to Prometheus, logs to Loki, and traces to Tempo. Grafana reads all three.
+
+- **Grafana**: <http://127.0.0.1:3000>. It opens the **Order Tracker – Requests and Errors** dashboard, which shows request counts, 4xx/5xx errors, error rate by route, warning and error logs, and failed traces. You can view without logging in. Sign in as `admin` / `admin` to edit. Log lines link to their trace, and traces link to their logs.
+- **Prometheus**: <http://127.0.0.1:9090>. Metrics are named `http_server_requests_total` and `http_server_request_duration_seconds`, with `job="order-tracker"`.
+- Collector, Loki, and Tempo are only reachable inside the Compose network. Their configs are in [observability/](observability/).
+
+Change the host ports with `GRAFANA_PORT` and `PROMETHEUS_PORT`, in the same way as `ORDER_TRACKER_PORT`. Telemetry data is kept in Docker volumes, and `docker compose down -v` deletes it along with the orders.
+
+When `OTEL_EXPORTER_OTLP_ENDPOINT` is not set, such as when you run the app outside Compose, it prints all signals as JSON to stdout instead.
 
 - **Metrics** (exported every 10 s, configurable with `OTEL_METRIC_EXPORT_INTERVAL` in ms): `http.server.requests` (counter) and `http.server.request.duration` (histogram, seconds). Both are labelled with `http.request.method`, `http.route` (the route template, such as `/api/orders/{order_id}`), and `http.response.status_code`.
 - **Traces**: an `order.lookup` span for every order lookup, with `order.id`, `order.found`, `order.priority`, and `order.status`. Unexpected errors set the span status to `ERROR` and record the exception.
